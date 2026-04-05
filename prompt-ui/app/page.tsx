@@ -1,65 +1,322 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useEffect, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
+import {
+  type Prompt,
+  type CreatePromptPayload,
+  type UpdatePromptPayload,
+  getPrompts,
+  createPrompt,
+  updatePrompt,
+} from '../lib/api';
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function PromptCard({
+  prompt,
+  onEdit,
+}: {
+  prompt: Prompt;
+  onEdit: (prompt: Prompt) => void;
+}) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="group relative rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-50">
+              {prompt.title}
+            </h3>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                prompt.isActive
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                  : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
+              }`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              {prompt.isActive ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+          <pre className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-zinc-50 p-3 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+            {prompt.content}
+          </pre>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        <button
+          onClick={() => onEdit(prompt)}
+          className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+        >
+          Edit
+        </button>
+      </div>
     </div>
+  );
+}
+
+interface PromptFormProps {
+  initial?: Prompt | null;
+  onSubmit: (values: CreatePromptPayload | UpdatePromptPayload) => Promise<void>;
+  onCancel: () => void;
+  loading: boolean;
+}
+
+function PromptForm({ initial, onSubmit, onCancel, loading }: PromptFormProps) {
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [content, setContent] = useState(initial?.content ?? '');
+  const [isActive, setIsActive] = useState(initial?.isActive ?? true);
+
+  const isEdit = !!initial;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await onSubmit({ title, content, isActive });
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
+    >
+      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        {isEdit ? 'Edit Prompt' : 'New Prompt'}
+      </h2>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Title *</span>
+        <input
+          required
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Summarise article"
+          className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder-zinc-500 dark:focus:ring-violet-900"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Prompt content *</span>
+        <textarea
+          required
+          rows={6}
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="You are a helpful assistant…"
+          className="resize-y rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder-zinc-500 dark:focus:ring-violet-900"
+        />
+      </label>
+
+      <label className="flex cursor-pointer items-center gap-3">
+        <div className="relative">
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+          />
+          <div
+            className={`h-5 w-9 rounded-full transition ${
+              isActive ? 'bg-violet-600' : 'bg-zinc-300 dark:bg-zinc-600'
+            }`}
+          />
+          <div
+            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+              isActive ? 'translate-x-4' : 'translate-x-0.5'
+            }`}
+          />
+        </div>
+        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Active</span>
+      </label>
+
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-full bg-violet-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
+        >
+          {loading ? 'Saving…' : isEdit ? 'Save changes' : 'Create prompt'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-full border border-zinc-200 px-5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+export default function HomePage() {
+  const { getToken, isSignedIn } = useAuth();
+
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const [showForm, setShowForm] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Fetch prompts whenever the user signs in
+  useEffect(() => {
+    if (!isSignedIn) return;
+
+    const load = async () => {
+      setFetchState('loading');
+      setFetchError(null);
+      try {
+        const token = await getToken();
+        const data = await getPrompts(token);
+        setPrompts(data);
+        setFetchState('idle');
+      } catch (err: unknown) {
+        setFetchError(err instanceof Error ? err.message : 'Failed to load prompts.');
+        setFetchState('error');
+      }
+    };
+
+    load();
+  }, [isSignedIn, getToken]);
+
+  const handleCreate = async (values: CreatePromptPayload | UpdatePromptPayload) => {
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      const token = await getToken();
+      const created = await createPrompt(values as CreatePromptPayload, token);
+      setPrompts((prev) => [created, ...prev]);
+      setShowForm(false);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Failed to create prompt.');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleUpdate = async (values: CreatePromptPayload | UpdatePromptPayload) => {
+    if (!editingPrompt) return;
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      const token = await getToken();
+      const updated = await updatePrompt(editingPrompt.id, values as UpdatePromptPayload, token);
+      setPrompts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setEditingPrompt(null);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update prompt.');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const openEditForm = (prompt: Prompt) => {
+    setEditingPrompt(prompt);
+    setShowForm(false);
+    setFormError(null);
+  };
+
+  const openNewForm = () => {
+    setEditingPrompt(null);
+    setShowForm(true);
+    setFormError(null);
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingPrompt(null);
+    setFormError(null);
+  };
+
+  // Not signed in
+  if (!isSignedIn) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-zinc-500 dark:text-zinc-400">
+        <p className="text-base">Sign in to manage your prompts.</p>
+      </div>
+    );
+  }
+
+  return (
+    <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
+      {/* Header row */}
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Prompts
+        </h1>
+        {!showForm && !editingPrompt && (
+          <button
+            onClick={openNewForm}
+            className="rounded-full bg-violet-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+          >
+            + New prompt
+          </button>
+        )}
+      </div>
+
+      {/* Create form */}
+      {showForm && (
+        <div className="mb-6">
+          <PromptForm
+            onSubmit={handleCreate}
+            onCancel={cancelForm}
+            loading={formLoading}
+          />
+          {formError && (
+            <p className="mt-2 text-sm text-red-500">{formError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Edit form */}
+      {editingPrompt && (
+        <div className="mb-6">
+          <PromptForm
+            initial={editingPrompt}
+            onSubmit={handleUpdate}
+            onCancel={cancelForm}
+            loading={formLoading}
+          />
+          {formError && (
+            <p className="mt-2 text-sm text-red-500">{formError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Prompt list */}
+      {fetchState === 'loading' && (
+        <p className="text-sm text-zinc-500">Loading prompts…</p>
+      )}
+
+      {fetchState === 'error' && (
+        <p className="text-sm text-red-500">{fetchError}</p>
+      )}
+
+      {fetchState === 'idle' && prompts.length === 0 && !showForm && (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-300 py-16 text-zinc-400 dark:border-zinc-700">
+          <p className="text-sm">No prompts yet.</p>
+          <button
+            onClick={openNewForm}
+            className="text-sm font-medium text-violet-600 hover:underline"
+          >
+            Create your first prompt →
+          </button>
+        </div>
+      )}
+
+      {prompts.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {prompts.map((prompt) => (
+            <PromptCard key={prompt.id} prompt={prompt} onEdit={openEditForm} />
+          ))}
+        </div>
+      )}
+    </main>
   );
 }
