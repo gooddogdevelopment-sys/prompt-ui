@@ -22,6 +22,12 @@ function PromptCard({
   prompt: Prompt;
   onEdit: (prompt: Prompt) => void;
 }) {
+  const [showResponse, setShowResponse] = useState(false);
+  const hasResponseObject =
+    prompt.responseObject &&
+    typeof prompt.responseObject === 'object' &&
+    Object.keys(prompt.responseObject).length > 0;
+
   return (
     <div className="group relative rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900">
       <div className="flex items-start justify-between gap-4">
@@ -43,6 +49,34 @@ function PromptCard({
           <pre className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-zinc-50 p-3 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
             {prompt.content}
           </pre>
+
+          {hasResponseObject && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setShowResponse((v) => !v)}
+                className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+              >
+                <svg
+                  className={`h-3.5 w-3.5 transition-transform ${showResponse ? 'rotate-90' : ''}`}
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                {showResponse ? 'Hide' : 'Show'} response object
+              </button>
+              {showResponse && (
+                <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-zinc-50 p-3 font-mono text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                  {JSON.stringify(prompt.responseObject, null, 2)}
+                </pre>
+              )}
+            </div>
+          )}
         </div>
         <button
           onClick={() => onEdit(prompt)}
@@ -66,12 +100,30 @@ function PromptForm({ initial, onSubmit, onCancel, loading }: PromptFormProps) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [content, setContent] = useState(initial?.content ?? '');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
+  const [responseObjectRaw, setResponseObjectRaw] = useState(
+    initial?.responseObject ? JSON.stringify(initial.responseObject, null, 2) : ''
+  );
+  const [responseObjectError, setResponseObjectError] = useState<string | null>(null);
 
   const isEdit = !!initial;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit({ title, content, isActive });
+    let responseObject: object = {};
+    if (responseObjectRaw.trim()) {
+      try {
+        responseObject = JSON.parse(responseObjectRaw);
+        if (typeof responseObject !== 'object' || Array.isArray(responseObject) || responseObject === null) {
+          setResponseObjectError('Must be a JSON object (e.g. { "key": "value" })');
+          return;
+        }
+      } catch {
+        setResponseObjectError('Invalid JSON — please check your syntax.');
+        return;
+      }
+    }
+    setResponseObjectError(null);
+    await onSubmit({ title, content, isActive, responseObject });
   };
 
   return (
@@ -105,6 +157,29 @@ function PromptForm({ initial, onSubmit, onCancel, loading }: PromptFormProps) {
           className="resize-y rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder-zinc-500 dark:focus:ring-violet-900"
         />
       </label>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Response object <span className="font-normal text-zinc-400">(JSON)</span>
+        </span>
+        <textarea
+          rows={5}
+          value={responseObjectRaw}
+          onChange={(e) => {
+            setResponseObjectRaw(e.target.value);
+            setResponseObjectError(null);
+          }}
+          placeholder={'{\n  "key": "value"\n}'}
+          className={`resize-y rounded-lg border bg-zinc-50 px-3 py-2 font-mono text-sm text-zinc-900 placeholder-zinc-400 outline-none focus:ring-2 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder-zinc-500 ${
+            responseObjectError
+              ? 'border-red-400 focus:border-red-500 focus:ring-red-200 dark:focus:ring-red-900'
+              : 'border-zinc-200 focus:border-violet-500 focus:ring-violet-200 dark:border-zinc-600 dark:focus:ring-violet-900'
+          }`}
+        />
+        {responseObjectError && (
+          <p className="text-xs text-red-500">{responseObjectError}</p>
+        )}
+      </div>
 
       <label className="flex cursor-pointer items-center gap-3">
         <div className="relative">

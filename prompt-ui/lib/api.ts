@@ -7,18 +7,21 @@ export interface Prompt {
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
+  responseObject: string;
 }
 
 export interface CreatePromptPayload {
   title: string;
   content: string;
   isActive?: boolean;
+  responseObject: object;
 }
 
 export interface UpdatePromptPayload {
   title?: string;
   content?: string;
   isActive?: boolean;
+  responseObject: object;
 }
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
